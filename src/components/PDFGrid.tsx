@@ -142,6 +142,8 @@ function PDFCard({
     onDelete: () => void;
     isOverlay?: boolean;
 }) {
+    const isImage = page.file.type === 'image/jpeg' || page.file.type === 'image/png';
+
     return (
         <div className={clsx(
             "relative group bg-white rounded-lg shadow-sm transition-all duration-200 border border-gray-200 overflow-hidden aspect-[3/4]",
@@ -170,30 +172,41 @@ function PDFCard({
                 </button>
             </div>
 
-            {/* PDF Page Rendering */}
+            {/* Image or PDF Page Rendering */}
             <div className="w-full h-full flex items-center justify-center bg-gray-50/50">
-                <Document
-                    file={page.previewUrl}
-                    loading={
-                        <div className="flex items-center justify-center h-full w-full">
-                            <Loader2 className="w-6 h-6 animate-spin text-blue-500/50" />
-                        </div>
-                    }
-                    error={
-                        <div className="text-xs text-red-500 text-center p-2">
-                            Failed to load
-                        </div>
-                    }
-                >
-                    <Page
-                        pageIndex={page.pageIndex}
-                        width={250} // Approximate width for thumbnail
-                        renderTextLayer={false}
-                        renderAnnotationLayer={false}
-                        rotate={page.rotation as 0 | 90 | 180 | 270}
-                        className="shadow-sm max-w-full h-auto object-contain pointer-events-none select-none" // prevent interaction with canvas
+                {isImage ? (
+                    <img
+                        src={page.previewUrl}
+                        alt={`Page ${page.pageIndex + 1}`}
+                        className="max-w-full max-h-full object-contain pointer-events-none select-none"
+                        style={{
+                            transform: `rotate(${page.rotation}deg)`
+                        }}
                     />
-                </Document>
+                ) : (
+                    <Document
+                        file={page.previewUrl}
+                        loading={
+                            <div className="flex items-center justify-center h-full w-full">
+                                <Loader2 className="w-6 h-6 animate-spin text-blue-500/50" />
+                            </div>
+                        }
+                        error={
+                            <div className="text-xs text-red-500 text-center p-2">
+                                Failed to load
+                            </div>
+                        }
+                    >
+                        <Page
+                            pageIndex={page.pageIndex}
+                            width={250} // Approximate width for thumbnail
+                            renderTextLayer={false}
+                            renderAnnotationLayer={false}
+                            rotate={page.rotation as 0 | 90 | 180 | 270}
+                            className="shadow-sm max-w-full h-auto object-contain pointer-events-none select-none" // prevent interaction with canvas
+                        />
+                    </Document>
+                )}
             </div>
 
             {/* Footer Info */}

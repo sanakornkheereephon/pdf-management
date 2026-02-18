@@ -26,7 +26,7 @@ export function PDFUploader({ onUpload }: PDFUploaderProps) {
     setIsDragging(false);
     
     const files = Array.from(e.dataTransfer.files).filter(
-      (file) => file.type === 'application/pdf'
+      (file) => file.type === 'application/pdf' || file.type === 'image/jpeg' || file.type === 'image/png'
     );
     
     if (files.length > 0) {
@@ -37,7 +37,7 @@ export function PDFUploader({ onUpload }: PDFUploaderProps) {
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files).filter(
-        (file) => file.type === 'application/pdf'
+        (file) => file.type === 'application/pdf' || file.type === 'image/jpeg' || file.type === 'image/png'
       );
       if (files.length > 0) {
         onUpload(files);
@@ -59,7 +59,7 @@ export function PDFUploader({ onUpload }: PDFUploaderProps) {
     >
       <input
         type="file"
-        accept="application/pdf"
+        accept="application/pdf,image/jpeg,image/png"
         multiple
         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
         onChange={handleFileInput}
@@ -75,10 +75,10 @@ export function PDFUploader({ onUpload }: PDFUploaderProps) {
         
         <div>
           <h3 className="text-lg font-semibold text-gray-900">
-            {isDragging ? "Drop PDFs here" : "Upload PDF files"}
+            {isDragging ? "Drop files here" : "Upload PDF or Image files"}
           </h3>
           <p className="mt-1 text-sm text-gray-500">
-            Drag & drop or click to select files
+            Drag & drop or click to select files (PDF, JPEG, PNG)
           </p>
         </div>
       </div>
