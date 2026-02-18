@@ -28,6 +28,17 @@ export default function Home() {
     const newPages: PDFPage[] = [];
 
     try {
+      // Check if any PDFs need processing
+      const hasPDFs = files.some(file => file.type === 'application/pdf');
+      let pdfjs: any = null;
+
+      // Only import react-pdf if we have PDFs to process
+      if (hasPDFs) {
+        const reactPdf = await import('react-pdf');
+        pdfjs = reactPdf.pdfjs;
+        await import('@/lib/setup-pdf');
+      }
+
       for (const file of files) {
         // Check if file is an image
         if (file.type === 'image/jpeg' || file.type === 'image/png') {
@@ -40,23 +51,30 @@ export default function Home() {
             rotation: 0
           });
         } else if (file.type === 'application/pdf') {
-          // Dynamically import react-pdf logic only on client interaction
-          const { pdfjs } = await import('react-pdf');
-          await import('@/lib/setup-pdf');
+          if (!pdfjs) {
+            console.error('PDF.js not loaded');
+            alert('Failed to load PDF processor');
+            continue;
+          }
 
-          const arrayBuffer = await file.arrayBuffer();
-          const pdf = await pdfjs.getDocument(arrayBuffer).promise;
+          try {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjs.getDocument(arrayBuffer).promise;
 
-          const previewUrl = URL.createObjectURL(file); // Create stable URL for rendering
+            const previewUrl = URL.createObjectURL(file); // Create stable URL for rendering
 
-          for (let i = 0; i < pdf.numPages; i++) {
-            newPages.push({
-              id: generateId(),
-              file: file,
-              previewUrl: previewUrl,
-              pageIndex: i,
-              rotation: 0
-            });
+            for (let i = 0; i < pdf.numPages; i++) {
+              newPages.push({
+                id: generateId(),
+                file: file,
+                previewUrl: previewUrl,
+                pageIndex: i,
+                rotation: 0
+              });
+            }
+          } catch (pdfError) {
+            console.error(`Error processing PDF file ${file.name}:`, pdfError);
+            alert(`Failed to process PDF file: ${file.name}`);
           }
         }
       }
