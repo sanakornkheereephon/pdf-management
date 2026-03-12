@@ -1,7 +1,7 @@
 import { PDFDocument, degrees } from 'pdf-lib';
 import { PDFPage } from './types';
 
-export async function mergeAndSavePDF(pages: PDFPage[]): Promise<void> {
+export async function mergeAndSavePDF(pages: PDFPage[], filename: string = 'merged-document.pdf'): Promise<void> {
     const mergedPdf = await PDFDocument.create();
     const sourceDocsCache = new Map<string, PDFDocument>();
 
@@ -64,7 +64,7 @@ export async function mergeAndSavePDF(pages: PDFPage[]): Promise<void> {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'merged-document.pdf';
+    link.download = filename.endsWith('.pdf') ? filename : `${filename}.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

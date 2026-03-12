@@ -24,17 +24,19 @@ import { useState } from 'react';
 import { Document, Page } from 'react-pdf';
 import { PDFPage } from '@/lib/types';
 import '@/lib/setup-pdf';
-import { RotateCw, Trash2, Loader2 } from 'lucide-react';
+import { RotateCw, RotateCcw, Trash2, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 
 interface PDFGridProps {
     pages: PDFPage[];
-    onRotate: (id: string) => void;
+    selectedIds: string[];
+    onToggleSelection: (id: string, isMulti: boolean, isRange: boolean) => void;
+    onRotate: (id: string, direction: 'cw' | 'ccw') => void;
     onDelete: (id: string) => void;
     onReorder: (newPages: PDFPage[]) => void;
 }
 
-export function PDFGrid({ pages, onRotate, onDelete, onReorder }: PDFGridProps) {
+export function PDFGrid({ pages, selectedIds, onToggleSelection, onRotate, onDelete, onReorder }: PDFGridProps) {
     const [activeId, setActiveId] = useState<string | null>(null);
 
     const sensors = useSensors(
@@ -56,9 +58,36 @@ export function PDFGrid({ pages, onRotate, onDelete, onReorder }: PDFGridProps) 
         const { active, over } = event;
 
         if (over && active.id !== over.id) {
-            const oldIndex = pages.findIndex((page) => page.id === active.id);
-            const newIndex = pages.findIndex((page) => page.id === over.id);
-            onReorder(arrayMove(pages, oldIndex, newIndex));
+            const activeId = active.id as string;
+            const overId = over.id as string;
+
+            const isDraggingSelected = selectedIds.includes(activeId);
+
+            if (isDraggingSelected && selectedIds.length > 1) {
+                // Multi-item reordering
+                const oldIndex = pages.findIndex(p => p.id === activeId);
+                const overIndex = pages.findIndex(p => p.id === overId);
+
+                // Get all selected pages in their CURRENT order
+                const selectedPages = pages.filter(p => selectedIds.includes(p.id));
+                const nonSelectedPages = pages.filter(p => !selectedIds.includes(p.id));
+
+                // Find where to insert the group
+                // We want to insert it relative to the 'over' item
+                const newPages = [...nonSelectedPages];
+                const insertIndex = newPages.findIndex(p => p.id === overId);
+
+                // If we are moving down, insert after 'over', else before 'over'
+                const finalInsertIndex = overIndex > oldIndex ? insertIndex + 1 : insertIndex;
+
+                newPages.splice(finalInsertIndex, 0, ...selectedPages);
+                onReorder(newPages);
+            } else {
+                // Single-item reordering
+                const oldIndex = pages.findIndex((page) => page.id === activeId);
+                const newIndex = pages.findIndex((page) => page.id === overId);
+                onReorder(arrayMove(pages, oldIndex, newIndex));
+            }
         }
         setActiveId(null);
     };
@@ -76,7 +105,9 @@ export function PDFGrid({ pages, onRotate, onDelete, onReorder }: PDFGridProps) 
                         <SortablePDFCard
                             key={page.id}
                             page={page}
-                            onRotate={() => onRotate(page.id)}
+                            isSelected={selectedIds.includes(page.id)}
+                            onSelect={(isMulti, isRange) => onToggleSelection(page.id, isMulti, isRange)}
+                            onRotate={(direction) => onRotate(page.id, direction)}
                             onDelete={() => onDelete(page.id)}
                         />
                     ))}
@@ -93,13 +124,26 @@ export function PDFGrid({ pages, onRotate, onDelete, onReorder }: PDFGridProps) 
                 }),
             }}>
                 {activeId ? (
-                    <div className="opacity-90 rotate-2 scale-105 cursor-grabbing">
+                    <div className="opacity-90 rotate-2 scale-105 cursor-grabbing relative">
                         <PDFCard
                             page={pages.find(p => p.id === activeId)!}
+                            isSelected={selectedIds.includes(activeId)}
+                            onSelect={() => { }}
                             onRotate={() => { }}
                             onDelete={() => { }}
                             isOverlay
                         />
+                        {selectedIds.includes(activeId) && selectedIds.length > 1 && (
+                            <div className="absolute -top-3 -right-3 bg-blue-600 text-white text-xs font-bold w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-white ring-2 ring-blue-600/20 animate-in zoom-in duration-300">
+                                {selectedIds.length}
+                            </div>
+                        )}
+                        {selectedIds.includes(activeId) && selectedIds.length > 1 && (
+                            <>
+                                <div className="absolute inset-0 bg-white border border-gray-200 rounded-lg -z-10 translate-x-2 translate-y-2 opacity-50"></div>
+                                <div className="absolute inset-0 bg-white border border-gray-200 rounded-lg -z-20 translate-x-4 translate-y-4 opacity-25"></div>
+                            </>
+                        )}
                     </div>
                 ) : null}
             </DragOverlay>
@@ -107,7 +151,13 @@ export function PDFGrid({ pages, onRotate, onDelete, onReorder }: PDFGridProps) 
     );
 }
 
-function SortablePDFCard(props: { page: PDFPage; onRotate: () => void; onDelete: () => void }) {
+function SortablePDFCard(props: {
+    page: PDFPage;
+    isSelected: boolean;
+    onSelect: (isMulti: boolean, isRange: boolean) => void;
+    onRotate: (direction: 'cw' | 'ccw') => void;
+    onDelete: () => void
+}) {
     const {
         attributes,
         listeners,
@@ -133,12 +183,16 @@ function SortablePDFCard(props: { page: PDFPage; onRotate: () => void; onDelete:
 
 function PDFCard({
     page,
+    isSelected,
+    onSelect,
     onRotate,
     onDelete,
     isOverlay
 }: {
     page: PDFPage;
-    onRotate: () => void;
+    isSelected: boolean;
+    onSelect: (isMulti: boolean, isRange: boolean) => void;
+    onRotate: (direction: 'cw' | 'ccw') => void;
     onDelete: () => void;
     isOverlay?: boolean;
 }) {
@@ -146,8 +200,9 @@ function PDFCard({
 
     return (
         <div className={clsx(
-            "relative group bg-white rounded-lg shadow-sm transition-all duration-200 border border-gray-200 overflow-hidden aspect-[3/4]",
-            isOverlay ? "shadow-xl border-blue-400" : "hover:shadow-md"
+            "relative group bg-white rounded-lg shadow-sm transition-all duration-200 border overflow-hidden aspect-[3/4]",
+            isSelected ? "border-blue-500 shadow-md ring-1 ring-blue-500/20" : "border-gray-200 hover:shadow-md",
+            isOverlay ? "shadow-xl border-blue-400 scale-[1.02]" : ""
         )}>
             {/* Actions Overlay */}
             <div className={clsx(
@@ -156,9 +211,17 @@ function PDFCard({
             )}>
                 <button
                     onPointerDown={(e) => e.stopPropagation()} // Stop drag start
-                    onClick={(e) => { e.stopPropagation(); onRotate(); }}
+                    onClick={(e) => { e.stopPropagation(); onRotate('ccw'); }}
                     className="p-1.5 bg-white/90 rounded-full hover:bg-blue-50 text-gray-700 hover:text-blue-600 shadow-sm transition-colors border border-gray-100"
-                    title="Rotate"
+                    title="Rotate CCW"
+                >
+                    <RotateCcw className="w-4 h-4" />
+                </button>
+                <button
+                    onPointerDown={(e) => e.stopPropagation()} // Stop drag start
+                    onClick={(e) => { e.stopPropagation(); onRotate('cw'); }}
+                    className="p-1.5 bg-white/90 rounded-full hover:bg-blue-50 text-gray-700 hover:text-blue-600 shadow-sm transition-colors border border-gray-100"
+                    title="Rotate CW"
                 >
                     <RotateCw className="w-4 h-4" />
                 </button>
@@ -171,6 +234,46 @@ function PDFCard({
                     <Trash2 className="w-4 h-4" />
                 </button>
             </div>
+
+            {/* Selection Checkbox */}
+            <div
+                className={clsx(
+                    "absolute top-2 left-2 z-10 transition-all duration-200",
+                    isSelected ? "opacity-100 scale-110" : "opacity-0 group-hover:opacity-100 scale-100",
+                    isOverlay && "opacity-0"
+                )}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onSelect(e.ctrlKey || e.metaKey, e.shiftKey);
+                }}
+            >
+                <div className={clsx(
+                    "w-5 h-5 rounded-md border shadow-sm flex items-center justify-center transition-colors",
+                    isSelected
+                        ? "bg-blue-600 border-blue-600 text-white"
+                        : "bg-white/90 border-gray-300 hover:border-blue-400"
+                )}>
+                    {isSelected && (
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                    )}
+                </div>
+            </div>
+
+            {/* Main Selection Area */}
+            <div
+                className="absolute inset-0 z-[1] cursor-pointer"
+                onClick={(e) => {
+                    onSelect(e.ctrlKey || e.metaKey, e.shiftKey);
+                }}
+            />
+
+            {/* Active Highlight Border */}
+            <div className={clsx(
+                "absolute inset-0 ring-2 ring-blue-500 ring-inset transition-opacity duration-200 z-[2] pointer-events-none rounded-lg",
+                isSelected ? "opacity-100" : "opacity-0"
+            )} />
 
             {/* Image or PDF Page Rendering */}
             <div className="w-full h-full flex items-center justify-center bg-gray-50/50">

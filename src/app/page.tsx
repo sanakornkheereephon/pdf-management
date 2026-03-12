@@ -4,7 +4,7 @@ import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { PDFUploader } from '@/components/PDFUploader';
 import { PDFPage } from '@/lib/types';
-import { FileText, Loader2, Download } from 'lucide-react';
+import { FileText, Loader2, Download, RotateCw, RotateCcw, Trash2 } from 'lucide-react';
 import { mergeAndSavePDF } from '@/lib/pdf-utils';
 
 // Dynamically import PDFGrid with SSR disabled
@@ -20,6 +20,9 @@ const PDFGrid = dynamic(() => import('@/components/PDFGrid').then(mod => mod.PDF
 export default function Home() {
   const [pages, setPages] = useState<PDFPage[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [exportFilename, setExportFilename] = useState('merged-document');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
 
   const handleUpload = async (files: File[]) => {
     setIsProcessing(true);
@@ -88,22 +91,79 @@ export default function Home() {
     }
   };
 
-  const handleRotate = (id: string) => {
+  const handleToggleSelection = (id: string, isMulti: boolean, isRange: boolean) => {
+    if (isRange && lastSelectedId) {
+      const lastIndex = pages.findIndex(p => p.id === lastSelectedId);
+      const currentIndex = pages.findIndex(p => p.id === id);
+      const start = Math.min(lastIndex, currentIndex);
+      const end = Math.max(lastIndex, currentIndex);
+      const rangeIds = pages.slice(start, end + 1).map(p => p.id);
+
+      setSelectedIds(prev => Array.from(new Set([...prev, ...rangeIds])));
+    } else if (isMulti) {
+      setSelectedIds(prev =>
+        prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+      );
+      setLastSelectedId(id);
+    } else {
+      setSelectedIds([id]);
+      setLastSelectedId(id);
+    }
+  };
+
+  const handleRotate = (id: string, direction: 'cw' | 'ccw' = 'cw') => {
     setPages(prev => prev.map(page => {
       if (page.id === id) {
-        return { ...page, rotation: (page.rotation + 90) % 360 };
+        const rotationDelta = direction === 'cw' ? 90 : -90;
+        let newRotation = (page.rotation + rotationDelta) % 360;
+        if (newRotation < 0) newRotation += 360;
+        return { ...page, rotation: newRotation };
       }
       return page;
     }));
   };
 
+  const handleRotateSelected = (direction: 'cw' | 'ccw' = 'cw') => {
+    if (selectedIds.length === 0) return;
+    setPages(prev => prev.map(page => {
+      if (selectedIds.includes(page.id)) {
+        const rotationDelta = direction === 'cw' ? 90 : -90;
+        let newRotation = (page.rotation + rotationDelta) % 360;
+        if (newRotation < 0) newRotation += 360;
+        return { ...page, rotation: newRotation };
+      }
+      return page;
+    }));
+  };
+
+  const handleRotateAll = (direction: 'cw' | 'ccw' = 'cw') => {
+    setPages(prev => prev.map(page => {
+      const rotationDelta = direction === 'cw' ? 90 : -90;
+      let newRotation = (page.rotation + rotationDelta) % 360;
+      if (newRotation < 0) newRotation += 360;
+      return { ...page, rotation: newRotation };
+    }));
+  };
+
   const handleDelete = (id: string) => {
     setPages(prev => prev.filter(page => page.id !== id));
+    setSelectedIds(prev => prev.filter(i => i !== id));
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedIds.length === 0) return;
+    if (confirm(`Are you sure you want to delete ${selectedIds.length} selected pages?`)) {
+      setPages(prev => prev.filter(page => !selectedIds.includes(page.id)));
+      setSelectedIds([]);
+      setLastSelectedId(null);
+    }
   };
 
   const handleClear = () => {
     if (confirm('Are you sure you want to clear all pages?')) {
       setPages([]);
+      setSelectedIds([]);
+      setLastSelectedId(null);
     }
   };
 
@@ -111,7 +171,7 @@ export default function Home() {
     if (pages.length === 0) return;
     setIsProcessing(true);
     try {
-      await mergeAndSavePDF(pages);
+      await mergeAndSavePDF(pages, exportFilename);
     } catch (error) {
       console.error("Export failed:", error);
       alert("Failed to export PDF.");
@@ -133,14 +193,26 @@ export default function Home() {
             </h1>
           </div>
           {pages.length > 0 && (
-            <button
-              onClick={handleExport}
-              disabled={isProcessing}
-              className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-gray-900 rounded-full hover:bg-gray-800 transition-colors shadow-sm hover:shadow disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              {isProcessing ? 'Exporting...' : 'Export PDF'}
-            </button>
+            <div className="flex items-center gap-3">
+              <div className="hidden sm:flex items-center bg-gray-100 rounded-lg px-3 py-1 border border-gray-200 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/50 transition-all">
+                <input
+                  type="text"
+                  value={exportFilename}
+                  onChange={(e) => setExportFilename(e.target.value)}
+                  placeholder="Filename"
+                  className="bg-transparent border-none text-sm font-medium focus:outline-none w-32"
+                />
+                <span className="text-gray-400 text-xs">.pdf</span>
+              </div>
+              <button
+                onClick={handleExport}
+                disabled={isProcessing}
+                className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-blue-600 rounded-full hover:bg-blue-700 transition-colors shadow-sm hover:shadow disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                {isProcessing ? 'Exporting...' : 'Export PDF'}
+              </button>
+            </div>
           )}
         </div>
       </header>
@@ -172,7 +244,52 @@ export default function Home() {
                     <FileText className="w-5 h-5 text-gray-400" />
                     {pages.length} Page{pages.length !== 1 ? 's' : ''}
                   </h2>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    {selectedIds.length > 0 && (
+                      <>
+                        <div className="flex items-center gap-2 mr-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-semibold border border-blue-100">
+                          {selectedIds.length} Selected
+                        </div>
+                        <button
+                          onClick={() => handleRotateSelected('ccw')}
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Rotate Selected Counter-Clockwise"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleRotateSelected('cw')}
+                          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Rotate Selected Clockwise"
+                        >
+                          <RotateCw className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={handleDeleteSelected}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete Selected"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                        <div className="w-px h-4 bg-gray-200 mx-1"></div>
+                      </>
+                    )}
+                    <button
+                      onClick={() => handleRotateAll('ccw')}
+                      className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-1.5 text-sm font-medium"
+                      title="Rotate All Counter-Clockwise"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      <span className="hidden sm:inline">Rotate All</span>
+                    </button>
+                    <button
+                      onClick={() => handleRotateAll('cw')}
+                      className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      title="Rotate All Clockwise"
+                    >
+                      <RotateCw className="w-4 h-4" />
+                    </button>
+                    <div className="w-px h-4 bg-gray-200 mx-1"></div>
                     <button
                       onClick={handleClear}
                       className="text-sm text-red-600 hover:text-red-700 font-medium px-3 py-1.5 rounded-md hover:bg-red-50 transition-colors"
@@ -184,9 +301,13 @@ export default function Home() {
 
                 <PDFGrid
                   pages={pages}
+                  selectedIds={selectedIds}
+                  onToggleSelection={handleToggleSelection}
                   onRotate={handleRotate}
                   onDelete={handleDelete}
-                  onReorder={setPages}
+                  onReorder={(newPages) => {
+                    setPages(newPages);
+                  }}
                 />
 
                 <div className="mt-12 flex justify-center border-t border-gray-200 pt-8 pb-12">
